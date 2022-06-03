@@ -22,6 +22,7 @@ import sys
 import shutil
 import subprocess
 import jsonschema
+import argparse
 from picture import get_size
 
 APPLIANCE_IDS = []
@@ -68,7 +69,7 @@ def signal_abort(sig, frame):
     sys.exit(0)
 
 
-def check_appliance(appliance):
+def check_appliance(appliance, appliance_path='appliances'):
     global warnings
     images = {}
     md5sums = set()
@@ -80,7 +81,7 @@ def check_appliance(appliance):
             schemas[version] = json.load(f)
             no_additional_properties(schemas[version])
 
-    with open(os.path.join('appliances', appliance)) as f:
+    with open(os.path.join(appliance_path, appliance)) as f:
         appliance_json = json.load(f)
 
     validate_schema(appliance_json, appliance, schemas)
@@ -122,8 +123,8 @@ def check_appliance(appliance):
                 sys.exit(1)
 
 
-def check_packer(packer):
-    path = os.path.join('packer', packer)
+def check_packer(packer, packer_path='packer'):
+    path = os.path.join(packer_path, packer)
     if not os.path.isdir(path):
         return
     for file in os.listdir(path):
@@ -143,15 +144,15 @@ def image_get_height(filename):
 use_imagemagick = shutil.which("identify")
 
 
-def check_symbol(symbol):
-    licence_file = os.path.join('symbols', symbol.replace('.svg', '.txt'))
+def check_symbol(symbol, symbols_path='symbols'):
+    licence_file = os.path.join(symbols_path, symbol.replace('.svg', '.txt'))
     if not os.path.exists(licence_file):
         print("Missing licence {} for {}".format(licence_file, symbol))
         sys.exit(1)
     if use_imagemagick:
-        height = int(subprocess.check_output(['identify', '-format', '%h', os.path.join('symbols', symbol)], shell=False))
+        height = int(subprocess.check_output(['identify', '-format', '%h', os.path.join(symbols_path, symbol)], shell=False))
     else:
-        height = image_get_height(os.path.join('symbols', symbol))
+        height = image_get_height(os.path.join(symbols_path, symbol))
     if height > 70:
         print("Symbol height of {} is too big {} > 70".format(symbol, height))
         sys.exit(1)
@@ -159,19 +160,27 @@ def check_symbol(symbol):
 
 def main():
     global warnings
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-a', '--appliance-dir', type=str, default='appliances', help="directory to search for appliances")
+    parser.add_argument('-p', '--packer-dir', type=str, default='packer', help="check packer files in given directory")
+    parser.add_argument('-s', '--symbols-dir', type=str, default='symbols', help="check symbol images in given directory")
+
+
+    args = parser.parse_args()
 
     signal.signal(signal.SIGINT, signal_abort)
     print("=> Check appliances")
-    for appliance in os.listdir('appliances'):
-        print('Check {}'.format(appliance))
-        check_appliance(appliance)
+    for appliance in os.listdir(args.appliance_dir):
+        if appliance.endswith('.gns3a'):
+            print('Check {}'.format(appliance))
+            check_appliance(appliance, args.appliance_dir)
     print("=> Check symbols")
-    for symbol in os.listdir('symbols'):
+    for symbol in os.listdir(args.symbols_dir):
         if symbol.endswith('.svg'):
             print('Check {}'.format(symbol))
             check_symbol(symbol)
     print("=> Check packer files")
-    for packer in os.listdir('packer'):
+    for packer in os.listdir(args.packer_dir):
         check_packer(packer)
     if warnings:
         print("{} warning!".format(warnings))
